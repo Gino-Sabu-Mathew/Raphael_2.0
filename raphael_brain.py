@@ -3,7 +3,7 @@
 from openai import OpenAI
 
 # Initialize OpenAI client using your API key directly
-client = OpenAI(api_key="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")
+client = OpenAI(api_key="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")
 
 class RaphaelBrain:
     def __init__(self, model="gpt-4o-mini", system_prompt: str = None):

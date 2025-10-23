@@ -13,12 +13,15 @@ import tkinter as tk
 import concurrent.futures
 
 from raphael_brain import RaphaelBrain # NOTE: Assumes this is functional
+from graph import NeuralActivityVisualizer
 
 # Set the timeout limit for core AI processing
 AI_PROCESSING_TIMEOUT = 5 
 
 # Define a constant for the timeout signal
 TIMEOUT_SIGNAL = "[TIMEOUT_OCCURRED]"
+
+state = "idle"
 
 # -----------------------
 # EmotionFace Class (with Thread-Safety & Fix for Missing Emotion)
@@ -139,6 +142,10 @@ def _tts_worker(text):
             tts_thread_active = False
 
 def speak(text):
+    global state
+
+    state = "speaking"
+
     """Starts the speaking process in a new, non-blocking thread."""
     global tts_thread_active
     
@@ -174,6 +181,8 @@ def safety_check(text):
 # Brain-Based Emotion Detection (Helper)
 # -----------------------
 def analyze_and_respond(text):
+    global state
+    state = "thinking"
     try:
         # ----- Unified Prompt -----
         prompt = f"""
@@ -229,6 +238,9 @@ def analyze_and_respond(text):
 # Voice Input Function
 # -----------------------
 def listen(duration=5, fs=16000):
+    global state
+    state = "listening"
+
     print("🎤 Speak now (5 seconds max)...")
     # Reduced duration might be better but 5s is kept as per original code
     recording = sd.rec(int(duration * fs), samplerate=fs, channels=1, dtype='int16')
@@ -250,6 +262,9 @@ def listen(duration=5, fs=16000):
 # Generate AI Response (Concurrent Processing & Latency Fix with Timeout)
 # -----------------------
 def generate_response(text):
+    global state
+    state = "thinking"
+
     if safety_check(text):
         face.update_face("sad", text_feedback="Safety Protocol Activated")
         return "It sounds like you are in serious distress. Please contact local emergency services or a crisis hotline immediately."
@@ -359,10 +374,62 @@ def main_loop():
 # Run GUI and AI threads
 # -----------------------
 if __name__ == "__main__":
+
+    # Global visualizer instance
+    viz = None
+
+    def state_monitor():
+        """
+        Continuously monitors the global 'state' variable and updates the visualizer.
+        """
+        global state, viz
+        
+        previous_state = None
+        
+        # Wait for viz to be initialized
+        while viz is None:
+            time.sleep(0.1)
+        
+        while True:
+            current_state = state
+            
+            # Only update if state has changed
+            if current_state != previous_state:
+                if current_state == "listening":
+                    viz.listening()
+                elif current_state == "thinking":
+                    viz.thinking()
+                elif current_state == "speaking":
+                    viz.speaking()
+                elif current_state == "idle":
+                    viz.idle()
+                
+                previous_state = current_state
+            
+            time.sleep(0.1)  # Check every 100ms
+
+    def start_visualizer():
+        """
+        Initializes and displays the neural activity visualizer in a separate thread.
+        """
+        global viz
+        
+        viz = NeuralActivityVisualizer()
+        viz.show()  # This blocks, but only this thread
+
+    # Start the state monitor thread
+    monitor_thread = threading.Thread(target=state_monitor, daemon=True)
+    monitor_thread.start()
+    
+    # Start the visualizer in a separate thread
+    viz_thread = threading.Thread(target=start_visualizer, daemon=True)
+    viz_thread.start()
+    
+    # Give the visualizer a moment to initialize
+    time.sleep(1)
+    
     # Start the main interaction loop on a dedicated thread
     threading.Thread(target=main_loop, daemon=True).start()
     
-    # Start the GUI on the main thread
+    # Start the GUI on the main thread (this blocks, but everything else is already running)
     face.run()
-
-
